@@ -20,8 +20,19 @@ deep-image-colorization/
 ## Basic Environment Setup Instructions
 1. Install Python 3.8 or higher.
 2. Create and activate a virtual environment (optional but recommended).
-3. Install dependencies using: `pip install -r requirements.txt`
-4. If using a GPU, make sure you have the appropriate CUDA Toolkit installed along with the correct PyTorch wheels.
+3. Install PyTorch with CUDA support (e.g., for CUDA 12.6):
+   ```bash
+   pip install torch==2.12.0 torchvision==0.27.0 --index-url https://download.pytorch.org/whl/cu126
+   ```
+4. Install the remaining dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Hardware Configuration
+This project was primarily developed and tested with:
+* **GPU**: NVIDIA GeForce RTX 3050
+* **PyTorch**: 2.12.0 (cu126)
 
 ## Verify Setup
 To verify that your environment is set up correctly, run the verification script:
