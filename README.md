@@ -39,3 +39,30 @@ To verify that your environment is set up correctly, run the verification script
 ```bash
 python scripts/verify_setup.py
 ```
+
+## Dataset
+We use the **ADE20K** dataset for this project. ADE20K provides a highly diverse collection of indoor, outdoor, natural, urban, and object scenes, which makes it an excellent general-purpose dataset for image colorization. 
+
+* **Usage**: The images are strictly used as RGB source images. Semantic segmentation masks and object annotations provided by ADE20K are ignored.
+* **Storage Strategy**: The raw dataset images are stored locally in `data/raw/` but are excluded from version control (Git). Instead, deterministic split manifests (`data/splits/*.txt`) containing relative paths are tracked in Git to ensure dataset reproducibility without inflating the repository size.
+* **Initial Experimental Subset**:
+  * Training: 10,000 images
+  * Validation: 1,000 images
+  * Test: 500 images
+* **Random Seed**: 42
+
+### Generating Splits and Inspecting
+To automatically download the raw dataset (if not already present), run:
+```bash
+python scripts/download_dataset.py
+```
+
+Once the dataset is downloaded, generate the deterministic train/val/test splits:
+```bash
+python scripts/create_splits.py
+```
+
+To inspect the dataset statistics (resolutions, formats, splits count):
+```bash
+python scripts/inspect_dataset.py
+```
