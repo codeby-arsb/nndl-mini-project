@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.env/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+outputs/checkpoints/*
+!outputs/checkpoints/.gitkeep
+outputs/predictions/*
+!outputs/predictions/.gitkeep
+outputs/plots/*
+!outputs/plots/.gitkeep
+models/*
+!models/.gitkeep
+
+# Datasets
+data/raw/*
+!data/raw/.gitkeep
+data/train/*
+!data/train/.gitkeep
+data/val/*
+!data/val/.gitkeep
+data/test/*
+!data/test/.gitkeep
