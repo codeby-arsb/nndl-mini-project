@@ -66,3 +66,15 @@ To inspect the dataset statistics (resolutions, formats, splits count):
 ```bash
 python scripts/inspect_dataset.py
 ```
+
+## CIE Lab Preprocessing
+This project converts RGB images into the CIE Lab color space to train the colorization network. 
+* **Why Lab?** The CIE Lab color space separates lightness (L*) from color (a* and b*), allowing the U-Net to be trained solely on predicting color from a grayscale-like input without having to simultaneously predict brightness.
+* **Inputs & Targets**: The L* channel is extracted, normalized to `[-1, 1]`, and fed as the single-channel input to the model. The a* and b* channels are normalized to `[-1, 1]` and serve as the two-channel prediction targets.
+* **Resizing**: All images are uniformly resized to 256x256 using bilinear interpolation before conversion.
+* **Reconstruction**: After predictions are made, the predicted a* and b* channels are combined with the original L* channel, denormalized, and converted back to standard RGB.
+
+To verify the preprocessing pipeline, check numerical boundaries, and inspect the reconstruction accuracy, run:
+```bash
+python scripts/test_preprocessing.py
+```
