@@ -78,3 +78,11 @@ To verify the preprocessing pipeline, check numerical boundaries, and inspect th
 ```bash
 python scripts/test_preprocessing.py
 ```
+
+### Dataset Pipeline
+The data loading pipeline is implemented using standard PyTorch `Dataset` and `DataLoader` classes. 
+* **Flow**: Manifest $\rightarrow$ RGB image $\rightarrow$ 256x256 resize $\rightarrow$ RGB to Lab conversion $\rightarrow$ L/ab normalization $\rightarrow$ PyTorch Tensors $\rightarrow$ DataLoader batch.
+* **Batch Size**: 8 (optimized for 4GB VRAM environments).
+* **Device**: The DataLoader returns CPU tensors. Transfer to GPU (if available) occurs explicitly during the training loop.
+* **Concurrency**: `num_workers=0` initially to ensure stability on Windows.
+* **Memory**: `pin_memory=True` if CUDA is available for faster host-to-device transfers.
