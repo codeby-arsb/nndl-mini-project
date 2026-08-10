@@ -86,3 +86,19 @@ The data loading pipeline is implemented using standard PyTorch `Dataset` and `D
 * **Device**: The DataLoader returns CPU tensors. Transfer to GPU (if available) occurs explicitly during the training loop.
 * **Concurrency**: `num_workers=0` initially to ensure stability on Windows.
 * **Memory**: `pin_memory=True` if CUDA is available for faster host-to-device transfers.
+
+## Architecture
+The colorization model is a custom PyTorch U-Net architecture designed specifically for this project.
+* **Input**: `1 × 256 × 256` (L* channel)
+* **Encoder**: 6 stages of downsampling (`kernel_size=4`, `stride=2`, `padding=1`, `BatchNorm2d`, `LeakyReLU(0.2)`)
+  * `1 → 64` (128x128)
+  * `64 → 128` (64x64)
+  * `128 → 256` (32x32)
+  * `256 → 512` (16x16)
+  * `512 → 512` (8x8)
+  * `512 → 512` (4x4)
+* **Bottleneck**: `512` channels at `4 × 4` spatial resolution.
+* **Decoder**: Symmetric upsampling with skip connections (`ConvTranspose2d`, followed by concatenation, `BatchNorm2d`, `ReLU`).
+  * Decoder channels halve sequentially after concatenating skip connections: `1024 → 1024 → 512 → 256 → 128`.
+* **Output**: `2 × 256 × 256` (a*b* channels)
+* **Output Activation**: `Tanh` (to constrain outputs approximately to `[-1, 1]`)
