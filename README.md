@@ -102,3 +102,20 @@ The colorization model is a custom PyTorch U-Net architecture designed specifica
   * Decoder channels halve sequentially after concatenating skip connections: `1024 → 1024 → 512 → 256 → 128`.
 * **Output**: `2 × 256 × 256` (a*b* channels)
 * **Output Activation**: `Tanh` (to constrain outputs approximately to `[-1, 1]`)
+
+## Training Pipeline
+The training pipeline uses PyTorch to optimize the U-Net on the ADE20K subset.
+* **Loss Function**: `MSELoss()` computed directly on the normalized a* and b* tensors.
+* **Optimizer**: `Adam` with an initial learning rate of `2e-4`.
+* **Scheduler**: `StepLR`.
+* **Batch Size**: 8 (optimized for 4GB VRAM).
+* **AMP**: Automatic Mixed Precision is used when CUDA is available to reduce memory usage and accelerate training.
+* **Validation**: Model is evaluated on the validation set without gradients (`model.eval()`).
+* **Checkpointing**: The pipeline maintains `outputs/checkpoints/latest.pth` and `outputs/checkpoints/best.pth`.
+* **Resume Support**: Training can be resumed seamlessly by providing a checkpoint path.
+* **History**: Training history (loss, lr, time) is recorded in `outputs/training_history.csv`.
+
+To run a quick one-epoch smoke test to verify the entire pipeline (including AMP and checkpointing) without training on the full dataset:
+```bash
+python -m src.train --smoke-test
+```
