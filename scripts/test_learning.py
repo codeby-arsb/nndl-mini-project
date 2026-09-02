@@ -9,12 +9,15 @@ sys.path.append(os.path.join(project_root, "src"))
 
 from model import ColorizationUNet
 from dataset import create_dataloader
+from device import get_device, get_device_name, get_amp_device_type, get_memory_stats
 
 def set_seed(seed=42):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
+    elif hasattr(torch.mps, "manual_seed"):
+        torch.mps.manual_seed(seed)
 
 def get_dataloaders():
     train_manifest = os.path.join(project_root, "data", "splits", "train.txt")
@@ -29,7 +32,8 @@ def test_learning():
     print("STEP 5.1 — TRAINING SANITY CHECK")
     print("==================================================\n")
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
+    amp_type = get_amp_device_type(device)
     
     set_seed(42)
     train_loader, val_loader = get_dataloaders()
@@ -48,7 +52,7 @@ def test_learning():
     model = ColorizationUNet().to(device)
     optimizer = optim.Adam(model.parameters(), lr=2e-4)
     criterion = nn.MSELoss()
-    scaler = torch.amp.GradScaler('cuda') if device.type == 'cuda' else None
+    scaler = torch.amp.GradScaler(amp_type) if amp_type else None
     
     print("GRADIENT TEST & PARAMETER UPDATE")
     print("--------------------------------------------------")
@@ -63,7 +67,7 @@ def test_learning():
     optimizer.zero_grad()
     
     if scaler:
-        with torch.amp.autocast('cuda'):
+        with torch.amp.autocast(amp_type):
             pred = model(l_batch)
             loss = criterion(pred, ab_batch)
         scaler.scale(loss).backward()
@@ -123,7 +127,7 @@ def test_learning():
     set_seed(42)
     model = ColorizationUNet().to(device) # fresh model
     optimizer = optim.Adam(model.parameters(), lr=2e-4)
-    scaler = torch.amp.GradScaler('cuda') if device.type == 'cuda' else None
+    scaler = torch.amp.GradScaler(amp_type) if amp_type else None
     
     # 2 Epochs, 32 train batches, 8 val batches
     for epoch in range(2):
@@ -134,7 +138,7 @@ def test_learning():
             l, ab = l.to(device), ab.to(device)
             optimizer.zero_grad()
             if scaler:
-                with torch.amp.autocast('cuda'):
+                with torch.amp.autocast(amp_type):
                     pred = model(l)
                     loss = criterion(pred, ab)
                 scaler.scale(loss).backward()
@@ -158,7 +162,7 @@ def test_learning():
                 if i >= 8: break
                 l, ab = l.to(device), ab.to(device)
                 if scaler:
-                    with torch.amp.autocast('cuda'):
+                    with torch.amp.autocast(amp_type):
                         pred = model(l)
                         loss = criterion(pred, ab)
                 else:
@@ -182,7 +186,7 @@ def test_learning():
         model.train()
         optimizer.zero_grad()
         if scaler:
-            with torch.amp.autocast('cuda'):
+            with torch.amp.autocast(amp_type):
                 pred = model(l_fixed)
                 loss = criterion(pred, ab_fixed)
             scaler.scale(loss).backward()
@@ -198,7 +202,7 @@ def test_learning():
             model.eval()
             with torch.no_grad():
                 if scaler:
-                    with torch.amp.autocast('cuda'):
+                    with torch.amp.autocast(amp_type):
                         val_pred = model(l_fixed)
                         val_loss = criterion(val_pred, ab_fixed).item()
                 else:
@@ -206,7 +210,7 @@ def test_learning():
                     val_loss = criterion(val_pred, ab_fixed).item()
             print(f"Update {update}: {val_loss:.8f}")
             
-    print("Trend: Loss decreases as expected on a fixed batch.\n")
+        print("Trend: Loss decreases as expected on a fixed batch.\n")
     
     print("TINY OVERFIT TEST")
     print("--------------------------------------------------")
@@ -232,7 +236,7 @@ def test_learning():
         for l, ab in tiny_set:
             optimizer.zero_grad()
             if scaler:
-                with torch.amp.autocast('cuda'):
+                with torch.amp.autocast(amp_type):
                     pred = model(l)
                     loss = criterion(pred, ab)
                 scaler.scale(loss).backward()
@@ -298,15 +302,17 @@ def test_learning():
     if os.path.exists(temp_ckpt):
         os.remove(temp_ckpt)
         
-    print("GPU")
+    print("ACCELERATOR / GPU")
     print("--------------------------------------------------")
-    if torch.cuda.is_available():
-        mem_alloc = torch.cuda.memory_allocated() / (1024 ** 2)
-        mem_res = torch.cuda.memory_reserved() / (1024 ** 2)
-        print(f"Peak Memory Allocated: {mem_alloc:.2f} MB")
-        print(f"Peak Memory Reserved: {mem_res:.2f} MB")
-    else:
-        print("GPU Tests Skipped (No CUDA)")
+    mem_stats = get_memory_stats(device)
+    if "allocated_mb" in mem_stats:
+        print(f"Peak Memory Allocated: {mem_stats['allocated_mb']:.2f} MB")
+    if "reserved_mb" in mem_stats:
+        print(f"Peak Memory Reserved: {mem_stats['reserved_mb']:.2f} MB")
+    elif "driver_allocated_mb" in mem_stats:
+        print(f"Driver Memory Allocated: {mem_stats['driver_allocated_mb']:.2f} MB")
+    elif not mem_stats:
+        print("CUDA Memory Metrics: Not applicable on this Mac")
 
 if __name__ == "__main__":
     test_learning()

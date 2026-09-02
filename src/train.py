@@ -14,6 +14,7 @@ sys.path.append(os.path.join(project_root, "src"))
 
 from model import ColorizationUNet
 from dataset import create_dataloader
+from device import get_device, get_device_name, get_amp_device_type, get_memory_stats
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train Colorization U-Net")
@@ -32,13 +33,16 @@ def set_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
+    elif hasattr(torch.mps, "manual_seed"):
+        torch.mps.manual_seed(seed)
 
 def main():
     args = get_args()
     set_seed(args.seed)
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    use_amp = args.amp and torch.cuda.is_available()
+    device = get_device()
+    amp_type = get_amp_device_type(device)
+    use_amp = args.amp and (amp_type is not None)
     
     print("==================================================")
     print("TRAINING CONFIGURATION")
@@ -66,7 +70,7 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=10, gamma=0.5)
     
-    scaler = torch.amp.GradScaler('cuda') if use_amp else None
+    scaler = torch.amp.GradScaler(amp_type) if use_amp else None
     
     start_epoch = 0
     best_val_loss = float('inf')
@@ -118,7 +122,7 @@ def main():
             optimizer.zero_grad()
             
             if use_amp:
-                with torch.amp.autocast('cuda'):
+                with torch.amp.autocast(amp_type):
                     pred_ab = model(l_batch)
                     loss = criterion(pred_ab, ab_batch)
             else:
@@ -158,7 +162,7 @@ def main():
                     break
                 l_batch, ab_batch = l_batch.to(device), ab_batch.to(device)
                 if use_amp:
-                    with torch.amp.autocast('cuda'):
+                    with torch.amp.autocast(amp_type):
                         pred_ab = model(l_batch)
                         loss = criterion(pred_ab, ab_batch)
                 else:
@@ -234,11 +238,15 @@ def main():
             else:
                 print(f"Checkpoint Integrity Test: FAIL (Shape was {list(dummy_out.shape)})")
                 
-        if torch.cuda.is_available():
-            mem_alloc = torch.cuda.memory_allocated() / (1024 ** 2)
-            mem_res = torch.cuda.memory_reserved() / (1024 ** 2)
-            print(f"\nPeak Memory Allocated: {mem_alloc:.2f} MB")
-            print(f"Peak Memory Reserved: {mem_res:.2f} MB")
+        mem_stats = get_memory_stats(device)
+        if "allocated_mb" in mem_stats:
+            print(f"\nPeak Memory Allocated: {mem_stats['allocated_mb']:.2f} MB")
+        if "reserved_mb" in mem_stats:
+            print(f"Peak Memory Reserved: {mem_stats['reserved_mb']:.2f} MB")
+        elif "driver_allocated_mb" in mem_stats:
+            print(f"Driver Memory Allocated: {mem_stats['driver_allocated_mb']:.2f} MB")
+        elif not mem_stats:
+            print("\nCUDA Memory Metrics: Not applicable on this Mac")
             
     # Plotting
     if len(history['train_loss']) > 0:

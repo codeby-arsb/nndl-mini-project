@@ -84,16 +84,17 @@ def test_model():
     range_test_pass = (out_min >= -1.01 and out_max <= 1.01 and not has_nan and not has_inf)
     print(f"Output Range Test: {'PASS' if range_test_pass else 'FAIL'}\n")
 
-    print("GPU TEST")
+    print("ACCELERATOR / GPU TEST")
     print("--------------------------------------------------")
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"GPU: {device}")
+    from device import get_device, get_device_name, empty_device_cache, device_synchronize, get_memory_stats
+    device = get_device()
+    print(f"Device: {device} ({get_device_name(device)})")
     
     gpu_forward_pass = False
     batch_forward_pass = False
     
-    if device.type == 'cuda':
-        torch.cuda.empty_cache()
+    if device.type in ('cuda', 'mps'):
+        empty_device_cache(device)
         model = model.to(device)
         x_gpu = x.to(device)
         
@@ -123,31 +124,35 @@ def test_model():
         except Exception as e:
             print(f"Batch 8 Forward: FAIL ({e})")
             
-        mem_alloc = torch.cuda.memory_allocated() / (1024 ** 2)
-        mem_res = torch.cuda.memory_reserved() / (1024 ** 2)
-        print(f"GPU Memory Allocated: {mem_alloc:.2f} MB")
-        print(f"GPU Memory Reserved: {mem_res:.2f} MB\n")
+        mem_stats = get_memory_stats(device)
+        if 'allocated_mb' in mem_stats:
+            print(f"Memory Allocated: {mem_stats['allocated_mb']:.2f} MB")
+        if 'reserved_mb' in mem_stats:
+            print(f"Memory Reserved: {mem_stats['reserved_mb']:.2f} MB")
+        elif 'driver_allocated_mb' in mem_stats:
+            print(f"Driver Memory Allocated: {mem_stats['driver_allocated_mb']:.2f} MB")
+        print()
         
         print("PERFORMANCE")
         print("--------------------------------------------------")
         # Warmup
         _ = model(batch_L)
         
-        torch.cuda.synchronize()
+        device_synchronize(device)
         start_time = time.time()
         num_iters = 5
         for _ in range(num_iters):
             _ = model(batch_L)
-        torch.cuda.synchronize()
+        device_synchronize(device)
         end_time = time.time()
         
         avg_time = (end_time - start_time) / num_iters
         print(f"Average Forward Pass: {avg_time:.4f} seconds\n")
     else:
-        print("GPU Tests Skipped (No CUDA)\n")
+        print("Accelerator Tests Skipped (CPU only)\n")
         
     print("==================================================")
-    if skip_test_pass and out_shape_pass and range_test_pass and (gpu_forward_pass and batch_forward_pass if device.type == 'cuda' else True):
+    if skip_test_pass and out_shape_pass and range_test_pass and (gpu_forward_pass and batch_forward_pass if device.type in ('cuda', 'mps') else True):
         print("STEP 4 STATUS: PASS")
     else:
         print("STEP 4 STATUS: FAIL")

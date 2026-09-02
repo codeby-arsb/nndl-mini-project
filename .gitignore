@@ -21,12 +21,16 @@ var/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 .env/
 env/
 ENV/
 env.bak/
 venv.bak/
+
+# macOS
+.DS_Store
 
 # IDEs
 .idea/

@@ -17,7 +17,7 @@ deep-image-colorization/
 └── README.md       # Project documentation
 ```
 
-## Basic Environment Setup Instructions
+## Basic Environment Setup Instructions (Windows / Linux)
 1. Install Python 3.8 or higher.
 2. Create and activate a virtual environment (optional but recommended).
 3. Install PyTorch with CUDA support (e.g., for CUDA 12.6):
@@ -29,10 +29,44 @@ deep-image-colorization/
    pip install -r requirements.txt
    ```
 
+## macOS Setup
+1. **Clone repository**:
+   ```bash
+   git clone https://github.com/codeby-arsb/nndl-mini-project.git
+   cd nndl-mini-project
+   ```
+2. **Create .venv**:
+   ```bash
+   python3 -m venv .venv
+   ```
+3. **Activate .venv**:
+   ```bash
+   source .venv/bin/activate
+   ```
+4. **Install dependencies**:
+   ```bash
+   python -m pip install --upgrade pip setuptools wheel
+   python -m pip install -r requirements.txt
+   ```
+5. **Download ADE20K if not present**:
+   ```bash
+   python scripts/download_dataset.py
+   ```
+6. **Run verification**:
+   ```bash
+   python scripts/verify_setup.py
+   ```
+
+### Cross-Platform Compute Backend
+The codebase dynamically detects and configures the optimal compute backend across operating systems:
+* **NVIDIA CUDA**: Used on compatible Windows/Linux systems for hardware-accelerated training and CUDA-based Automatic Mixed Precision (AMP).
+* **Apple Silicon**: Metal Performance Shaders (`mps`) backend is used when available on Apple Silicon Macs (M1/M2/M3/M4/M5), supporting hardware acceleration and MPS autocast/GradScaler.
+* **CPU**: Fully supported fallback across all platforms.
+
 ## Hardware Configuration
-This project was primarily developed and tested with:
-* **GPU**: NVIDIA GeForce RTX 3050
-* **PyTorch**: 2.12.0 (cu126)
+This project was developed and tested on:
+* **Windows**: NVIDIA GeForce RTX 3050 Laptop GPU, PyTorch with CUDA 12.6
+* **macOS**: Apple Silicon (M5), PyTorch with MPS backend
 
 ## Verify Setup
 To verify that your environment is set up correctly, run the verification script:

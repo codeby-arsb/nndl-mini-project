@@ -72,26 +72,31 @@ def test_dataloader():
     if not batch_shape_pass or not finite_test_pass:
         sys.exit(1)
 
-    # 3. GPU Transfer Test
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"CUDA Device: {device}")
+    # 3. GPU/Accelerator Transfer Test
+    from device import get_device, get_device_name, empty_device_cache, get_memory_stats
+    device = get_device()
+    print(f"Accelerator Device: {device} ({get_device_name(device)})")
     
-    if device.type == 'cuda':
-        torch.cuda.empty_cache()
+    if device.type in ('cuda', 'mps'):
+        empty_device_cache(device)
         batch_L, batch_ab = next(iter(train_loader))
         
-        batch_L_gpu = batch_L.to(device, non_blocking=True)
-        batch_ab_gpu = batch_ab.to(device, non_blocking=True)
+        batch_L_acc = batch_L.to(device)
+        batch_ab_acc = batch_ab.to(device)
         
-        gpu_transfer_pass = (batch_L_gpu.device.type == 'cuda' and batch_ab_gpu.device.type == 'cuda')
-        print(f"GPU Batch Transfer Test: {'PASS' if gpu_transfer_pass else 'FAIL'}")
+        acc_transfer_pass = (batch_L_acc.device.type == device.type and batch_ab_acc.device.type == device.type)
+        print(f"Accelerator Batch Transfer Test: {'PASS' if acc_transfer_pass else 'FAIL'}")
         
-        mem_alloc = torch.cuda.memory_allocated() / (1024 ** 2)
-        mem_res = torch.cuda.memory_reserved() / (1024 ** 2)
-        print(f"GPU Memory Allocated: {mem_alloc:.2f} MB")
-        print(f"GPU Memory Reserved: {mem_res:.2f} MB\n")
+        mem_stats = get_memory_stats(device)
+        if 'allocated_mb' in mem_stats:
+            print(f"Memory Allocated: {mem_stats['allocated_mb']:.2f} MB")
+        if 'reserved_mb' in mem_stats:
+            print(f"Memory Reserved: {mem_stats['reserved_mb']:.2f} MB")
+        elif 'driver_allocated_mb' in mem_stats:
+            print(f"Driver Memory Allocated: {mem_stats['driver_allocated_mb']:.2f} MB")
+        print()
     else:
-        print("GPU Batch Transfer Test: SKIPPED (No CUDA)\n")
+        print("Accelerator Batch Transfer Test: SKIPPED (CPU only)\n")
 
     # 4. Performance Check
     print("Measuring batch loading performance...")
