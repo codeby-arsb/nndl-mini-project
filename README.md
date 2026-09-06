@@ -153,3 +153,10 @@ To run a quick one-epoch smoke test to verify the entire pipeline (including AMP
 ```bash
 python -m src.train --smoke-test
 ```
+
+## Baseline Analysis
+To run qualitative and quantitative evaluation on the 20-epoch baseline model (`best.pth`):
+```bash
+python scripts/analyze_baseline.py
+```
+This generates high-resolution comparison sheets (`outputs/plots/baseline_best_analysis.png`), per-image metrics (`outputs/evaluation/per_image_metrics.csv`), and temporal training progression visualizations (`outputs/plots/training_progression_analysis.png`).
