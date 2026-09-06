@@ -1,0 +1,10 @@
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000026.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000028.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000106.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000150.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000151.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000156.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000203.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000324.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000354.jpg
+data/raw/ADEChallengeData2016/images/training/ADE_train_00000378.jpg

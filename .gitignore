@@ -45,6 +45,7 @@ outputs/predictions/*
 !outputs/predictions/.gitkeep
 outputs/plots/*
 !outputs/plots/.gitkeep
+outputs/evaluation/*.csv
 models/*
 !models/.gitkeep
 

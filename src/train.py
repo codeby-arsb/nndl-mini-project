@@ -12,13 +12,17 @@ import matplotlib.pyplot as plt
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(project_root, "src"))
 
+import random
+import numpy as np
+
 from model import ColorizationUNet
 from dataset import create_dataloader
 from device import get_device, get_device_name, get_amp_device_type, get_memory_stats
+from evaluate import evaluate_fixed_test_images
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train Colorization U-Net")
-    parser.add_argument("--epochs", type=int, default=50, help="Number of epochs to train")
+    parser.add_argument("--epochs", type=int, default=20, help="Number of epochs to train")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size")
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
@@ -29,6 +33,8 @@ def get_args():
     return parser.parse_args()
 
 def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
@@ -74,6 +80,15 @@ def main():
     
     start_epoch = 0
     best_val_loss = float('inf')
+    best_epoch = 0
+    
+    # Output paths
+    checkpoints_dir = os.path.join(project_root, "outputs", "checkpoints")
+    plots_dir = os.path.join(project_root, "outputs", "plots")
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(plots_dir, exist_ok=True)
+    
+    history_file = os.path.join(project_root, "outputs", "training_history.csv")
     
     # Resume Checkpoint
     if args.resume and os.path.isfile(args.resume):
@@ -84,18 +99,28 @@ def main():
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
         best_val_loss = checkpoint.get('best_val_loss', float('inf'))
-        print(f"Resumed at epoch {start_epoch} with best_val_loss {best_val_loss:.4f}\n")
+        best_epoch = checkpoint.get('best_epoch', 0)
+        
+        # Check if best.pth has more accurate best_val_loss or best_epoch
+        best_chk_path = os.path.join(checkpoints_dir, 'best.pth')
+        if os.path.isfile(best_chk_path):
+            best_chk = torch.load(best_chk_path, map_location='cpu', weights_only=False)
+            best_val_loss = min(best_val_loss, best_chk.get('best_val_loss', float('inf')))
+            if best_epoch == 0:
+                best_epoch = best_chk.get('best_epoch', 0)
+                
+        print(f"Resumed at epoch {start_epoch + 1} (start_epoch={start_epoch}) with best_val_loss {best_val_loss:.4f} (best_epoch={best_epoch})\n")
     
-    # Output paths
-    checkpoints_dir = os.path.join(project_root, "outputs", "checkpoints")
-    plots_dir = os.path.join(project_root, "outputs", "plots")
-    os.makedirs(checkpoints_dir, exist_ok=True)
-    os.makedirs(plots_dir, exist_ok=True)
-    
-    history_file = os.path.join(project_root, "outputs", "training_history.csv")
     write_header = not os.path.exists(history_file) or start_epoch == 0
     
     history = {'train_loss': [], 'val_loss': []}
+    if os.path.exists(history_file) and start_epoch > 0:
+        with open(history_file, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if int(row['epoch']) <= start_epoch:
+                    history['train_loss'].append(float(row['train_loss']))
+                    history['val_loss'].append(float(row['val_loss']))
     
     # Smoke Test Restrictions
     num_train_batches = 5 if args.smoke_test else len(train_loader)
@@ -182,11 +207,16 @@ def main():
         history['train_loss'].append(train_loss)
         history['val_loss'].append(val_loss)
         
+        mem_stats = get_memory_stats(device)
+        mem_str = ""
+        if "allocated_mb" in mem_stats:
+            mem_str = f" | Mem: {mem_stats['allocated_mb']:.1f} MB"
+            
         print(f"Epoch [{epoch+1}/{num_epochs}] "
               f"Time: {epoch_time:.2f}s | "
               f"Train Loss: {train_loss:.4f} | "
               f"Val Loss: {val_loss:.4f} | "
-              f"LR: {current_lr:.6f}")
+              f"LR: {current_lr:.6f}{mem_str}")
               
         # Save History
         with open(history_file, mode='a', newline='') as f:
@@ -212,7 +242,22 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             checkpoint_state['best_val_loss'] = best_val_loss
+            checkpoint_state['best_epoch'] = epoch + 1
             torch.save(checkpoint_state, os.path.join(checkpoints_dir, 'best.pth'))
+            
+        # Qualitative & quantitative evaluation on fixed test set
+        eval_epochs = [1, 5, 10, 15, 20]
+        if (epoch + 1) in eval_epochs:
+            eval_dir = os.path.join(project_root, "outputs", "evaluation")
+            evaluate_fixed_test_images(
+                model=model,
+                device=device,
+                checkpoint_name=f"epoch_{epoch+1:02d}",
+                epoch_num=epoch + 1,
+                amp_type=amp_type,
+                plots_dir=plots_dir,
+                eval_dir=eval_dir
+            )
             
     # Smoke test checks
     if args.smoke_test:
@@ -247,18 +292,65 @@ def main():
             print(f"Driver Memory Allocated: {mem_stats['driver_allocated_mb']:.2f} MB")
         elif not mem_stats:
             print("\nCUDA Memory Metrics: Not applicable on this Mac")
+    else:
+        # Full training post-verification
+        print("\n==================================================")
+        print("POST-TRAINING BASELINE VERIFICATION & EVALUATION")
+        print("==================================================")
+        best_chk_path = os.path.join(checkpoints_dir, 'best.pth')
+        if os.path.isfile(best_chk_path):
+            best_chk = torch.load(best_chk_path, map_location=device, weights_only=False)
+            best_model = ColorizationUNet().to(device)
+            best_model.load_state_dict(best_chk['model_state_dict'])
+            best_epoch = best_chk.get('best_epoch', best_chk.get('epoch', 0) + 1)
+            best_val = best_chk.get('best_val_loss', float('inf'))
+            print(f"Loaded best checkpoint from Epoch {best_epoch} (Val Loss: {best_val:.4f})")
+            
+            # Evaluate best checkpoint on fixed test set
+            eval_dir = os.path.join(project_root, "outputs", "evaluation")
+            evaluate_fixed_test_images(
+                model=best_model,
+                device=device,
+                checkpoint_name="best",
+                epoch_num=best_epoch,
+                amp_type=amp_type,
+                plots_dir=plots_dir,
+                eval_dir=eval_dir
+            )
+            
+            # Post-training inference verification
+            best_model.eval()
+            with torch.no_grad():
+                dummy_1 = torch.randn(1, 1, 256, 256, device=device)
+                out_1 = best_model(dummy_1)
+                single_pass = (list(out_1.shape) == [1, 2, 256, 256] and
+                               not torch.isnan(out_1).any() and
+                               not torch.isinf(out_1).any())
+                print(f"Reload Inference Test (Single Image [1, 2, 256, 256]): {'PASS' if single_pass else 'FAIL'}")
+                
+                dummy_8 = torch.randn(8, 1, 256, 256, device=device)
+                out_8 = best_model(dummy_8)
+                batch_pass = (list(out_8.shape) == [8, 2, 256, 256] and
+                              not torch.isnan(out_8).any() and
+                              not torch.isinf(out_8).any())
+                print(f"Reload Inference Test (Batch [8, 2, 256, 256]): {'PASS' if batch_pass else 'FAIL'}")
+                
+                weights_finite = all(torch.isfinite(p).all().item() for p in best_model.parameters())
+                print(f"Model Weights Finite Check: {'PASS' if weights_finite else 'FAIL'}")
             
     # Plotting
     if len(history['train_loss']) > 0:
         plt.figure(figsize=(10, 5))
-        plt.plot(history['train_loss'], label='Train Loss', marker='o')
-        plt.plot(history['val_loss'], label='Validation Loss', marker='x')
+        epochs_range = list(range(1, len(history['train_loss']) + 1))
+        plt.plot(epochs_range, history['train_loss'], label='Train Loss', marker='o')
+        plt.plot(epochs_range, history['val_loss'], label='Validation Loss', marker='x')
         plt.xlabel('Epoch')
         plt.ylabel('MSE Loss')
         plt.legend()
         plt.title('Training and Validation Loss')
         plt.savefig(os.path.join(plots_dir, 'training_loss.png'))
         plt.close()
+        print(f"Loss curves saved to: {os.path.join(plots_dir, 'training_loss.png')}")
 
 if __name__ == "__main__":
     main()
