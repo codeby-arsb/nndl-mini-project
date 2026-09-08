@@ -160,3 +160,43 @@ To run qualitative and quantitative evaluation on the 20-epoch baseline model (`
 python scripts/analyze_baseline.py
 ```
 This generates high-resolution comparison sheets (`outputs/plots/baseline_best_analysis.png`), per-image metrics (`outputs/evaluation/per_image_metrics.csv`), and temporal training progression visualizations (`outputs/plots/training_progression_analysis.png`).
+
+## Loss Function Experiments
+
+The project supports a configurable loss function system designed to compare regression behaviors in colorization:
+
+### 1. Baseline: MSE Loss (Completed)
+* **Formulation**: $L_{\text{MSE}} = \frac{1}{N}\sum (y_{\text{pred}} - y_{\text{true}})^2$
+* **Characteristics**: Penalizes larger errors quadratically ($2e$), causing gradient dominance from large errors and heavily favoring average, muted predictions (desaturation / sepia tint) to minimize expected variance.
+* **Status**: Full 20-epoch baseline training completed (`outputs/checkpoints/best.pth`, epoch 13, val loss 0.009781).
+
+### 2. Experiment 2: Smooth L1 / Huber Loss (Ready for Training)
+* **Formulation**:
+  $$\mathcal{L}_{\beta}(e) = \begin{cases} 0.5 \frac{e^2}{\beta}, & \text{if } |e| < \beta \\ |e| - 0.5\beta, & \text{otherwise} \end{cases}$$
+  (with default transition threshold $\beta = 1.0$)
+* **Characteristics**: Transitions smoothly from quadratic behavior for fine adjustments ($|e| < \beta$) to linear behavior for larger deviations ($|e| \ge \beta$). The gradient saturates at $\pm 1.0$, preventing extreme outlier penalties and encouraging the network to predict vibrant, highly chromatic colors without collapsing to gray.
+* **Status**: Implementation verified across analytical regimes, gradient saturation, AMP/MPS compatibility, and controlled learning diagnostics. Full 20-epoch training ready to run.
+
+### Running Loss Verification Tests
+To verify loss function mathematics, gradient saturation, and device compatibility:
+```bash
+python scripts/test_losses.py
+```
+To verify the training loop integration and controlled single-batch learning diagnostic on MPS:
+```bash
+python scripts/test_loss_training.py
+```
+
+### Running Training by Loss Configuration
+* **Run Baseline (MSE)**:
+  ```bash
+  python -m src.train --amp
+  ```
+  *(Checkpoints saved to `outputs/checkpoints/`)*
+
+* **Run Experiment 2 (Smooth L1)**:
+  ```bash
+  python -m src.train --loss smooth_l1 --amp
+  ```
+  *(Checkpoints saved to `outputs/experiments/smooth_l1/checkpoints/` to ensure baseline protection)*
+

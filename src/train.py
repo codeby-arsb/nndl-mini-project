@@ -19,12 +19,19 @@ from model import ColorizationUNet
 from dataset import create_dataloader
 from device import get_device, get_device_name, get_amp_device_type, get_memory_stats
 from evaluate import evaluate_fixed_test_images
+from losses import get_loss_function, get_loss_metadata, DEFAULT_SMOOTH_L1_BETA
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train Colorization U-Net")
     parser.add_argument("--epochs", type=int, default=20, help="Number of epochs to train")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size")
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
+    parser.add_argument("--loss", type=str, default="mse", choices=["mse", "smooth_l1"],
+                        help="Loss function: 'mse' (Baseline) or 'smooth_l1' (Huber)")
+    parser.add_argument("--loss-beta", type=float, default=DEFAULT_SMOOTH_L1_BETA,
+                        help="Beta threshold parameter for Smooth L1 loss (default: 1.0)")
+    parser.add_argument("--exp-dir", type=str, default=None,
+                        help="Custom experiment output directory for checkpoints and metrics")
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
     parser.add_argument("--smoke-test", action="store_true", help="Run a short smoke test instead of full training")
     parser.add_argument("--amp", action="store_true", help="Use Automatic Mixed Precision")
@@ -50,15 +57,47 @@ def main():
     amp_type = get_amp_device_type(device)
     use_amp = args.amp and (amp_type is not None)
     
+    # Loss, Optimizer, Scheduler
+    criterion = get_loss_function(args.loss, beta=args.loss_beta)
+    loss_meta = get_loss_metadata(args.loss, beta=args.loss_beta)
+    
+    # Output paths with strict baseline protection
+    if args.exp_dir:
+        exp_dir = os.path.abspath(args.exp_dir)
+        checkpoints_dir = os.path.join(exp_dir, "checkpoints")
+        plots_dir = os.path.join(exp_dir, "plots")
+        history_file = os.path.join(exp_dir, "training_history.csv")
+        eval_dir = os.path.join(exp_dir, "evaluation")
+    elif args.loss != "mse":
+        exp_sub = "smoke_test_smooth_l1" if args.smoke_test else os.path.join("experiments", "smooth_l1")
+        exp_dir = os.path.join(project_root, "outputs", exp_sub)
+        checkpoints_dir = os.path.join(exp_dir, "checkpoints")
+        plots_dir = os.path.join(exp_dir, "plots")
+        history_file = os.path.join(exp_dir, "training_history.csv")
+        eval_dir = os.path.join(exp_dir, "evaluation")
+    else:
+        checkpoints_dir = os.path.join(project_root, "outputs", "checkpoints")
+        plots_dir = os.path.join(project_root, "outputs", "plots")
+        history_file = os.path.join(project_root, "outputs", "smoke_test_history.csv") if args.smoke_test else os.path.join(project_root, "outputs", "training_history.csv")
+        eval_dir = os.path.join(project_root, "outputs", "evaluation")
+
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(plots_dir, exist_ok=True)
+    os.makedirs(eval_dir, exist_ok=True)
+    
     print("==================================================")
     print("TRAINING CONFIGURATION")
     print("==================================================")
+    print(f"Loss Function: {args.loss.upper()}")
+    print(f"Loss Configuration: {loss_meta['formulation']}")
     print(f"Batch Size: {args.batch_size}")
     print(f"Learning Rate: {args.lr}")
     print(f"Epochs: {'1 (Smoke Test)' if args.smoke_test else args.epochs}")
-    print(f"AMP: {use_amp}")
     print(f"Device: {device}")
+    print(f"AMP Status: {use_amp}")
     print(f"Seed: {args.seed}")
+    print(f"Experiment Configuration: {'Baseline (MSE)' if args.loss == 'mse' else 'Improved (Smooth L1 / Huber)'}")
+    print(f"Checkpoints Directory: {checkpoints_dir}")
     print("==================================================\n")
     
     # Data loaders
@@ -71,8 +110,6 @@ def main():
     # Model
     model = ColorizationUNet().to(device)
     
-    # Loss, Optimizer, Scheduler
-    criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=10, gamma=0.5)
     
@@ -82,18 +119,19 @@ def main():
     best_val_loss = float('inf')
     best_epoch = 0
     
-    # Output paths
-    checkpoints_dir = os.path.join(project_root, "outputs", "checkpoints")
-    plots_dir = os.path.join(project_root, "outputs", "plots")
-    os.makedirs(checkpoints_dir, exist_ok=True)
-    os.makedirs(plots_dir, exist_ok=True)
-    
-    history_file = os.path.join(project_root, "outputs", "training_history.csv")
-    
     # Resume Checkpoint
     if args.resume and os.path.isfile(args.resume):
         print(f"Resuming from checkpoint: {args.resume}")
         checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
+        
+        # Verify loss consistency on resume for scientific fairness
+        chk_loss = checkpoint.get("loss_name", checkpoint.get("config", {}).get("loss", "mse"))
+        if chk_loss != args.loss:
+            raise ValueError(
+                f"[ERROR] Cannot resume experiment with loss '{args.loss}' from a checkpoint trained with loss '{chk_loss}'. "
+                f"For scientific fairness, experiments with different loss functions must start from fresh random initialization."
+            )
+            
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
@@ -235,20 +273,26 @@ def main():
             'train_loss': train_loss,
             'val_loss': val_loss,
             'best_val_loss': best_val_loss,
+            'loss_name': args.loss,
+            'loss_config': loss_meta,
+            'loss_beta': args.loss_beta if args.loss == 'smooth_l1' else None,
             'config': vars(args)
         }
         
-        torch.save(checkpoint_state, os.path.join(checkpoints_dir, 'latest.pth'))
+        # Checkpointing (protect baseline checkpoints during smoke test)
+        save_name = "smoke_test_latest.pth" if (args.smoke_test and os.path.exists(os.path.join(checkpoints_dir, 'latest.pth'))) else "latest.pth"
+        best_save_name = "smoke_test_best.pth" if (args.smoke_test and os.path.exists(os.path.join(checkpoints_dir, 'best.pth'))) else "best.pth"
+
+        torch.save(checkpoint_state, os.path.join(checkpoints_dir, save_name))
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             checkpoint_state['best_val_loss'] = best_val_loss
             checkpoint_state['best_epoch'] = epoch + 1
-            torch.save(checkpoint_state, os.path.join(checkpoints_dir, 'best.pth'))
+            torch.save(checkpoint_state, os.path.join(checkpoints_dir, best_save_name))
             
-        # Qualitative & quantitative evaluation on fixed test set
+        # Qualitative & quantitative evaluation on fixed test set (skipped during smoke tests)
         eval_epochs = [1, 5, 10, 15, 20]
-        if (epoch + 1) in eval_epochs:
-            eval_dir = os.path.join(project_root, "outputs", "evaluation")
+        if (epoch + 1) in eval_epochs and not args.smoke_test:
             evaluate_fixed_test_images(
                 model=model,
                 device=device,
@@ -271,7 +315,8 @@ def main():
         # Integrity Test
         print("\nRunning Checkpoint Integrity Test...")
         fresh_model = ColorizationUNet().to(device)
-        chk = torch.load(os.path.join(checkpoints_dir, 'best.pth'), map_location=device, weights_only=False)
+        test_chk_path = os.path.join(checkpoints_dir, best_save_name) if 'best_save_name' in locals() and os.path.exists(os.path.join(checkpoints_dir, best_save_name)) else os.path.join(checkpoints_dir, 'best.pth')
+        chk = torch.load(test_chk_path, map_location=device, weights_only=False)
         fresh_model.load_state_dict(chk['model_state_dict'])
         
         fresh_model.eval()
@@ -307,7 +352,6 @@ def main():
             print(f"Loaded best checkpoint from Epoch {best_epoch} (Val Loss: {best_val:.4f})")
             
             # Evaluate best checkpoint on fixed test set
-            eval_dir = os.path.join(project_root, "outputs", "evaluation")
             evaluate_fixed_test_images(
                 model=best_model,
                 device=device,
