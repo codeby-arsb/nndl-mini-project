@@ -85,27 +85,36 @@ def main():
     os.makedirs(plots_dir, exist_ok=True)
     os.makedirs(eval_dir, exist_ok=True)
     
-    print("==================================================")
-    print("TRAINING CONFIGURATION")
-    print("==================================================")
-    print(f"Loss Function: {args.loss.upper()}")
-    print(f"Loss Configuration: {loss_meta['formulation']}")
-    print(f"Batch Size: {args.batch_size}")
-    print(f"Learning Rate: {args.lr}")
-    print(f"Epochs: {'1 (Smoke Test)' if args.smoke_test else args.epochs}")
-    print(f"Device: {device}")
-    print(f"AMP Status: {use_amp}")
-    print(f"Seed: {args.seed}")
-    print(f"Experiment Configuration: {'Baseline (MSE)' if args.loss == 'mse' else 'Improved (Smooth L1 / Huber)'}")
-    print(f"Checkpoints Directory: {checkpoints_dir}")
-    print("==================================================\n")
-    
     # Data loaders
     train_manifest = os.path.join(project_root, "data", "splits", "train.txt")
     val_manifest = os.path.join(project_root, "data", "splits", "val.txt")
     
     train_loader = create_dataloader(train_manifest, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
     val_loader = create_dataloader(val_manifest, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+
+    exp_name = "Baseline (MSE)" if args.loss == "mse" else "Experiment 2 — Smooth L1"
+    output_dir = exp_dir if 'exp_dir' in locals() else os.path.dirname(checkpoints_dir)
+
+    print("==================================================")
+    print("TRAINING CONFIGURATION")
+    print("==================================================")
+    print(f"Experiment Name: {exp_name}")
+    print(f"Loss Function: {args.loss.upper()}")
+    print(f"Loss Configuration: {loss_meta['formulation']}")
+    print(f"Random Seed: {args.seed}")
+    print(f"Dataset: ADE20K")
+    print(f"Training Images: {len(train_loader.dataset)}")
+    print(f"Validation Images: {len(val_loader.dataset)}")
+    print(f"Batch Size: {args.batch_size}")
+    print(f"Optimizer: Adam")
+    print(f"Learning Rate: {args.lr}")
+    print(f"Scheduler: StepLR (step_size=10, gamma=0.5)")
+    print(f"Epochs: {'1 (Smoke Test)' if args.smoke_test else args.epochs}")
+    print(f"Device: {device} ({get_device_name()})")
+    print(f"AMP: {use_amp}")
+    print(f"Output Directory: {output_dir}")
+    print(f"Checkpoints Directory: {checkpoints_dir}")
+    print("==================================================\n")
     
     # Model
     model = ColorizationUNet().to(device)
@@ -339,8 +348,9 @@ def main():
             print("\nCUDA Memory Metrics: Not applicable on this Mac")
     else:
         # Full training post-verification
+        exp_name = "SMOOTH L1" if args.loss == "smooth_l1" else "BASELINE"
         print("\n==================================================")
-        print("POST-TRAINING BASELINE VERIFICATION & EVALUATION")
+        print(f"POST-TRAINING {exp_name} VERIFICATION & EVALUATION")
         print("==================================================")
         best_chk_path = os.path.join(checkpoints_dir, 'best.pth')
         if os.path.isfile(best_chk_path):
@@ -389,9 +399,12 @@ def main():
         plt.plot(epochs_range, history['train_loss'], label='Train Loss', marker='o')
         plt.plot(epochs_range, history['val_loss'], label='Validation Loss', marker='x')
         plt.xlabel('Epoch')
-        plt.ylabel('MSE Loss')
+        loss_ylabel = "Smooth L1 Loss" if args.loss == "smooth_l1" else "MSE Loss"
+        plt.ylabel(loss_ylabel)
         plt.legend()
-        plt.title('Training and Validation Loss')
+        plot_title = "Smooth L1 Experiment — Training & Validation Loss" if args.loss == "smooth_l1" else "Baseline — Training & Validation Loss"
+        plt.title(plot_title)
+        plt.grid(True, linestyle="--", alpha=0.5)
         plt.savefig(os.path.join(plots_dir, 'training_loss.png'))
         plt.close()
         print(f"Loss curves saved to: {os.path.join(plots_dir, 'training_loss.png')}")
