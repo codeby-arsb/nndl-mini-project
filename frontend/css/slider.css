@@ -1,0 +1,147 @@
+/* ==========================================================================
+   ColorAI — Interactive Before / After Image Comparison Slider
+   ========================================================================== */
+
+.slider-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+
+.comparison-slider {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-elevated);
+  border: 1px solid var(--border-subtle);
+  background: #000;
+  cursor: ew-resize;
+}
+
+/* Image Layers */
+.slider-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.slider-img-after {
+  z-index: 1;
+}
+
+.slider-img-before-wrap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 50%;
+  overflow: hidden;
+  z-index: 2;
+  transition: width 0.05s ease-out;
+}
+
+.slider-img-before-wrap .slider-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Divider Line & Handle */
+.slider-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  background: #fff;
+  z-index: 10;
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+  transition: left 0.05s ease-out;
+}
+
+.slider-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  background: var(--text-primary);
+  color: var(--bg-main);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.6), 0 0 0 3px rgba(139, 92, 246, 0.6);
+  cursor: grab;
+  pointer-events: auto;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.slider-handle:active {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.8), 0 0 0 4px var(--accent-primary);
+}
+
+.slider-handle svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Floating Label Badges */
+.slider-badge {
+  position: absolute;
+  top: 18px;
+  z-index: 15;
+  padding: 6px 14px;
+  background: rgba(10, 14, 23, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  pointer-events: none;
+}
+
+.slider-badge-left {
+  left: 18px;
+  color: #e2e8f0;
+}
+
+.slider-badge-right {
+  right: 18px;
+  color: var(--accent-secondary);
+}
+
+/* Hint below slider */
+.slider-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.slider-hint svg {
+  width: 16px;
+  height: 16px;
+}
